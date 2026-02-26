@@ -24,9 +24,10 @@ HEADERS = {
 mcp = FastMCP(
     "Twenty CRM",
     instructions=(
-        "Twenty CRM server for managing people, companies, notes, and tasks. "
+        "Twenty CRM server for managing people, companies, notes, tasks, and opportunities. "
         "Use search_people/search_companies with a query string to find records. "
-        "Use create_note/create_task with personIds/companyIds to link them to people/companies."
+        "Use create_note/create_task with personIds/companyIds to link them to people/companies. "
+        "Use search_opportunities/list_opportunities to find deals/opportunities."
     ),
 )
 
@@ -172,6 +173,31 @@ def _format_task(t: dict) -> str:
         if len(markdown) > 500:
             preview += "..."
         parts.append(preview)
+    return "\n".join(parts)
+
+
+def _format_opportunity(o: dict) -> str:
+    """Format an opportunity record."""
+    name = o.get("name", "(uten navn)")
+    stage = o.get("stage", "")
+    close_date = o.get("closeDate", "") or ""
+    company_id = o.get("companyId", "") or ""
+    contact_id = o.get("pointOfContactId", "") or ""
+    created = o.get("createdAt", "")[:10]
+    # Amount is stored as amountMicros in a currency object
+    amount_obj = o.get("amount", {}) or {}
+    amount_micros = amount_obj.get("amountMicros") if isinstance(amount_obj, dict) else None
+    currency = amount_obj.get("currencyCode", "NOK") if isinstance(amount_obj, dict) else "NOK"
+    parts = [f"**{name}** (id: `{o['id']}`, stage: {stage}, opprettet: {created})"]
+    if amount_micros is not None:
+        amount_nok = amount_micros / 1_000_000
+        parts.append(f"  Beløp: {amount_nok:,.2f} {currency}")
+    if close_date:
+        parts.append(f"  Lukkedato: {close_date[:10]}")
+    if company_id:
+        parts.append(f"  Bedrift-ID: `{company_id}`")
+    if contact_id:
+        parts.append(f"  Kontakt-ID: `{contact_id}`")
     return "\n".join(parts)
 
 
@@ -663,18 +689,160 @@ def delete_task(id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Opportunities tools
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def search_opportunities(query: str, limit: int = 10) -> str:
+    """Search for opportunities by name or other text fields.
+
+    Args:
+        query: Search text
+        limit: Max results (default 10)
+    """
+    opps = _search_objects("opportunities", query, limit)
+    if not opps:
+        return f"Ingen muligheter funnet for '{query}'."
+    lines = [f"Fant {len(opps)} mulighet(er) for '{query}':\n"]
+    for o in opps:
+        lines.append(_format_opportunity(o))
+        lines.append("")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def list_opportunities(stage: Optional[str] = None, limit: int = 20) -> str:
+    """List opportunities, optionally filtered by stage.
+
+    Args:
+        stage: Filter by stage (e.g. INCOMING, MEETING, PROPOSAL, WON, LOST)
+        limit: Max results (default 20)
+    """
+    params: dict = {"limit": str(limit)}
+    if stage:
+        params["filter"] = f"stage[eq]:{stage}"
+    data = _get("opportunities", params)
+    opps = data["data"]["opportunities"]
+    if not opps:
+        return "Ingen muligheter funnet."
+    lines = [f"Fant {len(opps)} mulighet(er):\n"]
+    for o in opps:
+        lines.append(_format_opportunity(o))
+        lines.append("")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def get_opportunity(id: str) -> str:
+    """Get detailed information about an opportunity.
+
+    Args:
+        id: Opportunity UUID
+    """
+    data = _get(f"opportunities/{id}")
+    o = data["data"]["opportunity"]
+    return _format_opportunity(o)
+
+
+@mcp.tool()
+def create_opportunity(
+    name: str,
+    companyId: Optional[str] = None,
+    pointOfContactId: Optional[str] = None,
+    stage: Optional[str] = None,
+    amount: Optional[float] = None,
+    currencyCode: Optional[str] = "NOK",
+    closeDate: Optional[str] = None,
+) -> str:
+    """Create a new opportunity in Twenty CRM.
+
+    Args:
+        name: Opportunity name
+        companyId: Company UUID to link to
+        pointOfContactId: Person UUID as point of contact
+        stage: Stage (e.g. INCOMING, MEETING, PROPOSAL, WON, LOST)
+        amount: Amount in currency units (e.g. 50000 for 50,000 NOK)
+        currencyCode: Currency code (default NOK)
+        closeDate: Expected close date in ISO 8601 format (e.g. 2026-06-15)
+    """
+    body: dict = {"name": name}
+    if companyId:
+        body["companyId"] = companyId
+    if pointOfContactId:
+        body["pointOfContactId"] = pointOfContactId
+    if stage:
+        body["stage"] = stage
+    if amount is not None:
+        body["amount"] = {
+            "amountMicros": int(amount * 1_000_000),
+            "currencyCode": currencyCode or "NOK",
+        }
+    if closeDate:
+        body["closeDate"] = closeDate
+    data = _post("opportunities", body)
+    o = data["data"]["createOpportunity"]
+    return f"Mulighet opprettet: {_format_opportunity(o)}"
+
+
+@mcp.tool()
+def update_opportunity(
+    id: str,
+    name: Optional[str] = None,
+    stage: Optional[str] = None,
+    amount: Optional[float] = None,
+    currencyCode: Optional[str] = None,
+    closeDate: Optional[str] = None,
+    companyId: Optional[str] = None,
+    pointOfContactId: Optional[str] = None,
+) -> str:
+    """Update an existing opportunity.
+
+    Args:
+        id: Opportunity UUID
+        name: New name
+        stage: New stage (e.g. INCOMING, MEETING, PROPOSAL, WON, LOST)
+        amount: New amount in currency units
+        currencyCode: Currency code (default NOK)
+        closeDate: New close date in ISO 8601 format
+        companyId: New company UUID
+        pointOfContactId: New point of contact person UUID
+    """
+    body: dict = {}
+    if name:
+        body["name"] = name
+    if stage:
+        body["stage"] = stage
+    if amount is not None:
+        body["amount"] = {
+            "amountMicros": int(amount * 1_000_000),
+            "currencyCode": currencyCode or "NOK",
+        }
+    if closeDate:
+        body["closeDate"] = closeDate
+    if companyId:
+        body["companyId"] = companyId
+    if pointOfContactId:
+        body["pointOfContactId"] = pointOfContactId
+    if not body:
+        return "Ingen felter å oppdatere."
+    data = _patch(f"opportunities/{id}", body)
+    o = data["data"]["updateOpportunity"]
+    return f"Mulighet oppdatert: {_format_opportunity(o)}"
+
+
+# ---------------------------------------------------------------------------
 # Utility tools
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
 def search_records(query: str, objectTypes: Optional[list[str]] = None) -> str:
-    """Search across multiple object types (people, companies, notes, tasks).
+    """Search across multiple object types (people, companies, notes, tasks, opportunities).
 
     Args:
         query: Search text
-        objectTypes: Object types to search. Default: people, companies, notes, tasks
+        objectTypes: Object types to search. Default: people, companies, notes, tasks, opportunities
     """
-    types = objectTypes or ["people", "companies", "notes", "tasks"]
+    types = objectTypes or ["people", "companies", "notes", "tasks", "opportunities"]
     results = []
     for obj_type in types:
         items = _search_objects(obj_type, query, 5)
@@ -689,6 +857,8 @@ def search_records(query: str, objectTypes: Optional[list[str]] = None) -> str:
                     results.append(_format_note(item))
                 elif obj_type == "tasks":
                     results.append(_format_task(item))
+                elif obj_type == "opportunities":
+                    results.append(_format_opportunity(item))
                 results.append("")
     if not results:
         return f"Ingen treff for '{query}'."
