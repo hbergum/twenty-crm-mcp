@@ -14,14 +14,14 @@ Existing Twenty CRM MCP servers have issues with Twenty's REST API:
 
 This server solves all three by using `searchVector[like]` for full-text search, proper cursor pagination with `starting_after`, and automatic noteTarget/taskTarget creation when creating notes and tasks.
 
-## Tools (15)
+## Tools (17)
 
 | Category | Tools |
 |---|---|
 | **People** | `search_people`, `get_person`, `create_person`, `update_person` |
 | **Companies** | `search_companies`, `get_company`, `create_company`, `update_company` |
-| **Notes** | `create_note` (with person/company linking), `list_notes`, `get_note` |
-| **Tasks** | `create_task` (with person/company linking), `list_tasks`, `get_task` |
+| **Notes** | `create_note` (with person/company linking), `list_notes`, `get_note`, `delete_note` |
+| **Tasks** | `create_task` (with person/company linking), `list_tasks`, `get_task`, `delete_task` |
 | **Utility** | `search_records` (cross-type search) |
 
 ## Setup

@@ -482,6 +482,18 @@ def create_note(
 
 
 @mcp.tool()
+def delete_note(id: str) -> str:
+    """Delete a note by its UUID.
+
+    Args:
+        id: Note UUID
+    """
+    resp = _delete(f"notes/{id}")
+    deleted_id = resp["data"]["deleteNote"]["id"]
+    return f"Note slettet (id: `{deleted_id}`)"
+
+
+@mcp.tool()
 def list_notes(search: Optional[str] = None, limit: int = 20) -> str:
     """List notes, optionally filtered by search text.
 
@@ -519,6 +531,17 @@ def get_note(id: str) -> str:
     if targets:
         result += f"\n\nKoblede mål ({len(targets)} stk): Se note-targets for detaljer."
     return result
+
+
+@mcp.tool()
+def delete_note(id: str) -> str:
+    """Delete a note.
+
+    Args:
+        id: Note UUID
+    """
+    data = _delete(f"notes/{id}")
+    return f"Note slettet (id: `{id}`)"
 
 
 # ---------------------------------------------------------------------------
@@ -626,6 +649,17 @@ def get_task(id: str) -> str:
     if targets:
         result += f"\n\nKoblede mål ({len(targets)} stk): Se task-targets for detaljer."
     return result
+
+
+@mcp.tool()
+def delete_task(id: str) -> str:
+    """Delete a task.
+
+    Args:
+        id: Task UUID
+    """
+    data = _delete(f"tasks/{id}")
+    return f"Oppgave slettet (id: `{id}`)"
 
 
 # ---------------------------------------------------------------------------
